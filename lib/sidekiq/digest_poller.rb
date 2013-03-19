@@ -11,7 +11,6 @@ module Sidekiq
       def poll(first_time=false)
         watchdog('scheduling digest poller thread died!') do
           add_jitter if first_time
-          logger.info "Polling..."
 
           begin
             to_queue = Sidekiq::DigestibleWorker.descendants
@@ -24,7 +23,6 @@ module Sidekiq
 
                 if conn.exists(key)
                   conn.rename key, process_key
-                  logger.info "Queuing up job for #{klass} => #{process_key}"
                   klass.perform_async(process_key)
                 end
               end

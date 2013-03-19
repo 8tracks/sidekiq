@@ -1,7 +1,7 @@
 require 'sidekiq/util'
 require 'sidekiq/manager'
 require 'sidekiq/scheduled'
-require 'sidekiq/digestible/digest_poller'
+require 'sidekiq/digest_poller'
 
 module Sidekiq
   class Launcher
