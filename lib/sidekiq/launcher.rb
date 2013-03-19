@@ -1,19 +1,22 @@
 require 'sidekiq/util'
 require 'sidekiq/manager'
 require 'sidekiq/scheduled'
+require 'sidekiq/digestible/digest_poller'
 
 module Sidekiq
   class Launcher
-    attr_reader :manager, :poller, :options
+    attr_reader :manager, :poller, :digest_poller, :options
     def initialize(options)
       @options = options
       @manager = Sidekiq::Manager.new(options)
       @poller  = Sidekiq::Scheduled::Poller.new
+      @digest_poller = Sidekiq::Scheduled::DigestPoller.new
     end
 
     def run
       manager.async.start
       poller.async.poll(true)
+      digest_poller.async.poll(true)
     end
 
     def stop

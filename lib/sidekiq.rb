@@ -3,6 +3,7 @@ require 'sidekiq/version'
 require 'sidekiq/logging'
 require 'sidekiq/client'
 require 'sidekiq/worker'
+require 'sidekiq/digestible/worker'
 require 'sidekiq/redis_connection'
 require 'sidekiq/util'
 require 'sidekiq/api'
@@ -38,6 +39,8 @@ module Sidekiq
   def self.options=(opts)
     @options = opts
   end
+
+
 
   ##
   # Configuration for Sidekiq server, use like:
