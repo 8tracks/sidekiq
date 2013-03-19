@@ -41,7 +41,7 @@ module Sidekiq
       private
 
       def poll_interval
-        60
+        240
       end
 
       def add_jitter
