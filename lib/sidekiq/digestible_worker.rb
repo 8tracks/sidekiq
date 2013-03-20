@@ -6,6 +6,8 @@ module Sidekiq
     include Worker
     # include ::NewRelic::Agent::Instrumentation::ControllerInstrumentation
 
+    sidekiq_options :period => 30
+
     def self.inherited(subclass)
       @digestible_workers ||= []
       @digestible_workers << subclass
@@ -19,8 +21,10 @@ module Sidekiq
     def self.digest_perform(*args)
       Sidekiq.redis do |conn|
         if self.get_sidekiq_options['digest_type'] == :unique
+puts "Adding to set: #{digestible_key}"
           conn.sadd(digestible_key, Sidekiq.dump_json(args))
         else
+puts "Adding to list: #{digestible_key}"
           conn.rpush(digestible_key, Sidekiq.dump_json(args))
         end
       end
@@ -34,7 +38,6 @@ module Sidekiq
     # sidekiq worker too much. If it does, we'll need to split the args into
     # chunks. Also assumes any errors are handled by the #perform_all method.
     def perform(pending_args_key)
-      logger.info "Performing on #{pending_args_key}"
       # Pull all args from key
       Sidekiq.redis do |conn|
         if self.class.get_sidekiq_options['digest_type'] == :unique

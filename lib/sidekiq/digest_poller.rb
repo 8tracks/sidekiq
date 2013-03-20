@@ -8,16 +8,19 @@ module Sidekiq
       include Celluloid
       include Sidekiq::Util
 
+      POLL_INTERVAL = 6
+
       def poll(first_time=false)
         watchdog('scheduling digest poller thread died!') do
           add_jitter if first_time
 
           begin
             to_queue = Sidekiq::DigestibleWorker.descendants
-
             Sidekiq.redis do |conn|
               now = Time.now
               to_queue.each do |klass|
+                next if rand > (1.0 / klass.get_sidekiq_options['period'])
+
                 key = klass.digestible_key
                 process_key = "#{key.gsub(/:pending/, '')}:#{now.strftime('%Y.%m.%d_%H-%M-%S')}"
 
@@ -41,12 +44,14 @@ module Sidekiq
       private
 
       def poll_interval
-        240
+        # Is dependent on number of workers we're running -- the goal is to
+        # have an average of 1 poller run every 1 second.
+        POLL_INTERVAL
       end
 
       def add_jitter
         begin
-          sleep(poll_interval * rand)
+          sleep(POLL_INTERVAL * rand)
         rescue Celluloid::Task::TerminatedError
           # Hit Ctrl-C when Sidekiq is finished booting and we have a chance
           # to get here.
