@@ -21,10 +21,10 @@ module Sidekiq
     def self.digest_perform(*args)
       Sidekiq.redis do |conn|
         if self.get_sidekiq_options['digest_type'] == :unique
-puts "Adding to set: #{digestible_key}"
+# puts "Adding to set: #{digestible_key}"
           conn.sadd(digestible_key, Sidekiq.dump_json(args))
         else
-puts "Adding to list: #{digestible_key}"
+# puts "Adding to list: #{digestible_key}"
           conn.rpush(digestible_key, Sidekiq.dump_json(args))
         end
       end
