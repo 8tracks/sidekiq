@@ -9,11 +9,11 @@ module Sidekiq
       size = options[:size] || (Sidekiq.server? ? (Sidekiq.options[:concurrency] + 2) : 5)
 
       ConnectionPool.new(:timeout => 1, :size => size) do
-        build_client(url, options[:namespace], options[:driver] || 'ruby')
+        build_client(url, options[:namespace], options[:driver] || 'ruby', options[:sentinels])
       end
     end
 
-    def self.build_client(url, namespace, driver)
+    def self.build_client(url, namespace, driver, sentinels)
       client = Redis.connect(:url => url, :driver => driver)
       if namespace
         require 'redis/namespace'
