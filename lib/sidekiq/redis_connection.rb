@@ -14,7 +14,12 @@ module Sidekiq
     end
 
     def self.build_client(url, namespace, driver, sentinels)
-      client = Redis.connect(:url => url, :driver => driver)
+      if sentinels && sentinels.length > 0
+        client = Redis.new(:master_name => url, :sentinels => sentinels, :driver => driver)
+      else
+        client = Redis.connect(:url => url, :driver => driver)
+      end
+
       if namespace
         require 'redis/namespace'
         Redis::Namespace.new(namespace, :redis => client)
