@@ -1,5 +1,6 @@
 require 'sidekiq/client'
 require 'sidekiq/core_ext'
+require 'newrelic_rpm'
 
 module Sidekiq
 
@@ -66,6 +67,10 @@ module Sidekiq
 
       def client_push(item) # :nodoc:
         Sidekiq::Client.push(item.stringify_keys)
+      rescue => e
+        error = e.exception("[HANDLED] " + e.message)
+        error.set_backtrace(e.backtrace)
+        NewRelic::Agent.notice_error(error)
       end
 
     end

@@ -1,5 +1,5 @@
 require 'sidekiq/worker'
-# require 'newrelic_rpm'
+require 'newrelic_rpm'
 
 module Sidekiq
   class DigestibleWorker
@@ -28,6 +28,10 @@ module Sidekiq
           conn.rpush(digestible_key, Sidekiq.dump_json(args))
         end
       end
+    rescue => e
+      error = e.exception("[HANDLED] " + e.message)
+      error.set_backtrace(e.backtrace)
+      NewRelic::Agent.notice_error(error)
     end
 
     def self.digestible_key
