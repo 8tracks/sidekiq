@@ -8,25 +8,45 @@ module Sidekiq
       include Celluloid
       include Sidekiq::Util
 
-      POLL_INTERVAL = 6
+      if ::Rails.env.development?
+        POLL_INTERVAL = 1
+      else
+        POLL_INTERVAL = 6
+      end
 
       def poll(first_time=false)
         watchdog('scheduling digest poller thread died!') do
           add_jitter if first_time
 
           begin
-            to_queue = Sidekiq::DigestibleWorker.descendants
+            @now_string = Time.now.strftime('%Y.%m.%d_%H-%M-%S')
+
+            digestible_jobs = Sidekiq::DigestibleWorker.descendants
             Sidekiq.redis do |conn|
-              now = Time.now
-              to_queue.each do |klass|
-                next if rand > (1.0 / klass.get_sidekiq_options['period'])
+              digestible_jobs.each do |klass|
+                frequency = (1.0 / klass.get_sidekiq_options['period'])
+                # puts "frequency = #{frequency}"
 
-                key = klass.digestible_key
-                process_key = "#{key.gsub(/:pending/, '')}:#{now.strftime('%Y.%m.%d_%H-%M-%S')}"
+                if klass.get_sidekiq_options['grouped']
+                  number_of_groups_queued = conn.scard("#{klass}:groups")
+                  # puts "number_of_groups_queued = #{number_of_groups_queued}"
+                  if number_of_groups_queued > 0
+                    number_of_groups_to_pop = (frequency * number_of_groups_queued + 1).to_i
+                    # puts "number_of_groups_to_pop = #{number_of_groups_to_pop}"
+                    groups_to_work_on = conn.srandmember("#{klass}:groups", number_of_groups_to_pop)
+                    # puts "groups_to_work_on = #{groups_to_work_on}"
+                    conn.srem("#{klass}:groups", *groups_to_work_on)
 
-                if conn.exists(key)
-                  conn.rename key, process_key
-                  klass.perform_async(process_key)
+                    groups_to_work_on.each do |group|
+                      key = klass.digestible_key(group)
+                      schedule_pending_job(klass, key, conn)
+                    end
+                  end
+
+                else
+                  if rand < frequency
+                    schedule_pending_job(klass, klass.digestible_key, conn)
+                  end
                 end
               end
 
@@ -42,6 +62,16 @@ module Sidekiq
       end
 
       private
+
+      def schedule_pending_job(klass, key, conn)
+        process_key = "#{key.gsub(/:pending/, '')}:#{@now_string}"
+
+        if conn.exists(key)
+          conn.rename key, process_key
+          # puts "rename #{key} to #{process_key}"
+          klass.perform_async(process_key)
+        end  
+      end
 
       def poll_interval
         # Is dependent on number of workers we're running -- the goal is to

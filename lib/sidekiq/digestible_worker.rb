@@ -18,19 +18,41 @@ module Sidekiq
     end
 
     def self.digest_perform(*args)
+      queue_a_job(nil, args)
+    end
+
+    def self.grouped_digest_perform(group, *args)
       Sidekiq.redis do |conn|
-        if self.get_sidekiq_options['digest_type'] == :unique
-# puts "Adding to set: #{digestible_key}"
-          conn.sadd(digestible_key, Sidekiq.dump_json(args))
-        else
-# puts "Adding to list: #{digestible_key}"
-          conn.rpush(digestible_key, Sidekiq.dump_json(args))
+        conn.pipelined do
+          queue_a_job(group, args)
+
+          # queue_group
+          # puts "Adding group #{group} to set: #{self}:groups"
+          conn.sadd("#{self}:groups", group)
         end
       end
     end
 
-    def self.digestible_key
-      "#{self}:pending"
+    def self.queue_a_job(group, args)
+      key = self.digestible_key(group)
+
+      Sidekiq.redis do |conn|
+        if self.get_sidekiq_options['digest_type'] == :unique
+  # puts "Adding to set: #{key}"
+          conn.sadd(key, Sidekiq.dump_json(args))
+        else
+  # puts "Adding to list: #{key}"
+          conn.rpush(key, Sidekiq.dump_json(args))
+        end
+      end
+    end
+
+    def self.digestible_key(group=nil)
+      if group
+        "#{self}:#{group}:pending"
+      else
+        "#{self}:pending"
+      end
     end
 
     # Naive implementation. This assumes the args in redis don't bloat the
@@ -47,7 +69,12 @@ module Sidekiq
 
         @args = @args.collect { |a| Sidekiq.load_json(a) }
 
-        perform_all(@args)
+        if self.class.get_sidekiq_options['grouped']
+          group = pending_args_key.split(':')[1]
+          perform_all(group, @args)
+        else
+          perform_all(@args)
+        end
 
         conn.del(pending_args_key)
       end
