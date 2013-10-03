@@ -31,7 +31,10 @@ module Sidekiq
                   number_of_groups_queued = conn.scard("#{klass}:groups")
                   # puts "number_of_groups_queued = #{number_of_groups_queued}"
                   if number_of_groups_queued > 0
-                    number_of_groups_to_pop = (frequency * number_of_groups_queued + 1).to_i
+                    # if multiplier is 1.5, we will pop 1 half the time and 2 half the time
+                    multiplier = (frequency * number_of_groups_queued)
+                    number_of_groups_to_pop = multiplier.truncate + (rand < (multiplier - multiplier.truncate) ? 1 : 0)
+
                     # puts "number_of_groups_to_pop = #{number_of_groups_to_pop}"
                     groups_to_work_on = conn.srandmember("#{klass}:groups", number_of_groups_to_pop)
                     # puts "groups_to_work_on = #{groups_to_work_on}"
