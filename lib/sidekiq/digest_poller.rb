@@ -35,14 +35,16 @@ module Sidekiq
                     multiplier = (frequency * number_of_groups_queued)
                     number_of_groups_to_pop = multiplier.truncate + (rand < (multiplier - multiplier.truncate) ? 1 : 0)
 
-                    # puts "number_of_groups_to_pop = #{number_of_groups_to_pop}"
-                    groups_to_work_on = conn.srandmember("#{klass}:groups", number_of_groups_to_pop)
-                    # puts "groups_to_work_on = #{groups_to_work_on}"
-                    conn.srem("#{klass}:groups", groups_to_work_on)
+                    if number_of_groups_to_pop > 0
+                      # puts "number_of_groups_to_pop = #{number_of_groups_to_pop}"
+                      groups_to_work_on = conn.srandmember("#{klass}:groups", number_of_groups_to_pop)
+                      # puts "groups_to_work_on = #{groups_to_work_on}"
+                      conn.srem("#{klass}:groups", groups_to_work_on)
 
-                    groups_to_work_on.each do |group|
-                      key = klass.digestible_key(group)
-                      schedule_pending_job(klass, key, conn)
+                      groups_to_work_on.each do |group|
+                        key = klass.digestible_key(group)
+                        schedule_pending_job(klass, key, conn)
+                      end
                     end
                   end
 
