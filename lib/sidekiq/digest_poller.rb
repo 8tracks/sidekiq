@@ -35,7 +35,7 @@ module Sidekiq
                     # puts "number_of_groups_to_pop = #{number_of_groups_to_pop}"
                     groups_to_work_on = conn.srandmember("#{klass}:groups", number_of_groups_to_pop)
                     # puts "groups_to_work_on = #{groups_to_work_on}"
-                    conn.srem("#{klass}:groups", *groups_to_work_on)
+                    conn.srem("#{klass}:groups", groups_to_work_on)
 
                     groups_to_work_on.each do |group|
                       key = klass.digestible_key(group)
