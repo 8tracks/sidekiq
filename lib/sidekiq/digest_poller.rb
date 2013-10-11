@@ -72,10 +72,14 @@ module Sidekiq
         process_key = "#{key.gsub(/:pending/, '')}:#{@now_string}"
 
         if conn.exists(key)
-          conn.rename key, process_key
+          conn.rename(key, process_key)
+          if !klass.get_sidekiq_options['critical']
+            conn.expire(process_key, DigestibleWorker::DIGEST_KEY_TTL)
+          end
+
           # puts "rename #{key} to #{process_key}"
           klass.perform_async(process_key)
-        end  
+        end
       end
 
       def poll_interval

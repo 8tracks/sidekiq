@@ -7,6 +7,8 @@ module Sidekiq
 
     sidekiq_options :period => 30
 
+    DIGEST_KEY_TTL = 10 * 24 * 60 * 60
+
     def self.inherited(subclass)
       @digestible_workers ||= []
       @digestible_workers << subclass
@@ -44,6 +46,12 @@ module Sidekiq
   # puts "Adding to list: #{key}"
           conn.rpush(key, Sidekiq.dump_json(args))
         end
+
+        # Set expiry on non-critical jobs to allow redis to evict these keys
+        # when redis maxmemory-policy is set to volatile-*.
+        if !self.get_sidekiq_options['critical']
+          conn.expire(key, DIGEST_KEY_TTL)
+        end
       end
     end
 
@@ -59,8 +67,12 @@ module Sidekiq
     # sidekiq worker too much. If it does, we'll need to split the args into
     # chunks. Also assumes any errors are handled by the #perform_all method.
     def perform(pending_args_key)
+
       # Pull all args from key
       Sidekiq.redis do |conn|
+        # Key could have been evicted or expired
+        return unless conn.exists(pending_args_key)
+
         if self.class.get_sidekiq_options['digest_type'] == :unique
           @args = conn.smembers(pending_args_key)
         else

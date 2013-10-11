@@ -83,6 +83,14 @@ module Sidekiq
           else
             # Goodbye dear message, you (re)tried your best I'm sure.
             logger.debug { "Dropping message after hitting the retry maximum: #{msg}" }
+
+            # Remove digestible key
+            if worker.is_a?(DigestibleWorker)
+              key = msg['args'][0]
+              Sidekiq.redis do |conn|
+                conn.del(key)
+              end
+            end
           end
           raise e
         end
