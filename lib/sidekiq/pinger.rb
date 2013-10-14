@@ -8,11 +8,12 @@ module Sidekiq
       include Celluloid
       include Sidekiq::Util
 
-      PING_INTERVAL = 60
+      PING_INTERVAL = 5
 
       def poll(first_time=false)
         watchdog('scheduling digest poller thread died!') do
           add_jitter if first_time
+          logger.debug { "PING #{Time.now.to_s}" }
           STATSD.count("sidekiq.processor")
           after(PING_INTERVAL) { poll }
         end
