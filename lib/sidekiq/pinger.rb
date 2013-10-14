@@ -8,7 +8,7 @@ module Sidekiq
       include Celluloid
       include Sidekiq::Util
 
-      PING_INTERVAL = 5
+      PING_INTERVAL = 60
 
       def poll(first_time=false)
         watchdog('scheduling digest poller thread died!') do
