@@ -22,6 +22,10 @@ module Sidekiq
         watchdog('scheduling poller thread died!') do
           add_jitter if first_time
 
+          if Sidekiq.options[:tag]
+            STATSD.count("sidekiq.#{Sidekiq.options[:tag]}.poller.is_running")
+          end
+
           begin
             # A message's "score" in Redis is the time at which it should be processed.
             # Just check Redis for the set of messages with a timestamp before now.

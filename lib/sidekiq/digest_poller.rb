@@ -18,6 +18,10 @@ module Sidekiq
         watchdog('scheduling digest poller thread died!') do
           add_jitter if first_time
 
+          if Sidekiq.options[:tag]
+            STATSD.count("sidekiq.#{Sidekiq.options[:tag]}.digest_poller.is_running")
+          end
+
           begin
             @now_string = Time.now.strftime('%Y.%m.%d_%H-%M-%S')
 
