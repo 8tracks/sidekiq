@@ -40,6 +40,13 @@ module Sidekiq
                 messages.each do |message|
                   logger.debug { "enqueued #{sorted_set}: #{message}" }
                   msg = Sidekiq.load_json(message)
+
+                  # MTRX-related change: Overwrite the queued_at attribute - we
+                  # want to use the server's time not the client for jobs that
+                  # are scheduled.
+                  msg['queued_at'] = Time.now.utc.to_i
+                  message = Sidekiq.dump_json(msg)
+
                   conn.multi do
                     conn.sadd('queues', msg['queue'])
                     conn.rpush("queue:#{msg['queue']}", message)
