@@ -9,6 +9,12 @@ module Sidekiq
 
     DIGEST_KEY_TTL = 10 * 24 * 60 * 60
 
+    # TODO Move these constants to Worker and allow all sidekiq jobs to
+    # auto-snooze/skip
+    SKIP          = :_skip_job
+    SNOOZE        = :_snooze_job
+    RESCHEDULE_IN = 10 * 60 * 60
+
     def self.inherited(subclass)
       @digestible_workers ||= []
       @digestible_workers << subclass
@@ -81,14 +87,21 @@ module Sidekiq
 
         @args = @args.collect { |a| Sidekiq.load_json(a) }
 
+        action = nil
         if self.class.get_sidekiq_options['grouped']
           group = pending_args_key.split(':')[1]
-          perform_all(group, @args)
+          action = perform_all(group, @args)
         else
-          perform_all(@args)
+          action = perform_all(@args)
         end
 
-        conn.del(pending_args_key)
+        if action == SNOOZE
+          conn.expire(pending_args_key, DIGEST_KEY_TTL)
+          reschedule_in = self.class.get_sidekiq_options["reschedule_in"] || RESCHEDULE_IN
+          self.class.perform_in(reschedule_in, pending_args_key)
+        else
+          conn.del(pending_args_key)
+        end
       end
     end
     # add_transaction_tracer :perform, :params => '{:pending_args_key => args[0]}'
