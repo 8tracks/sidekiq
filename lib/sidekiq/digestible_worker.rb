@@ -95,13 +95,8 @@ module Sidekiq
           action = perform_all(@args)
         end
 
-        if action == SNOOZE
-          conn.expire(pending_args_key, DIGEST_KEY_TTL)
-          reschedule_in = self.class.get_sidekiq_options["reschedule_in"] || RESCHEDULE_IN
-          self.class.perform_in(reschedule_in, pending_args_key)
-        else
-          conn.del(pending_args_key)
-        end
+        
+        conn.del(pending_args_key)
       end
     end
     # add_transaction_tracer :perform, :params => '{:pending_args_key => args[0]}'
