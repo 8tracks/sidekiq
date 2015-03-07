@@ -29,6 +29,10 @@ module Sidekiq
       queue_a_job(nil, args)
     end
 
+    def self.digest_perform_many(args_array)
+      queue_jobs(nil, args_array)
+    end
+
     def self.grouped_digest_perform(group, *args)
       Sidekiq.redis do |conn|
         conn.pipelined do
@@ -51,6 +55,29 @@ module Sidekiq
         else
           # puts "Adding to list: #{key}"
           conn.rpush(key, Sidekiq.dump_json(args))
+        end
+
+        # Set expiry on non-critical jobs to allow redis to evict these keys
+        # when redis maxmemory-policy is set to volatile-*.
+        if !self.get_sidekiq_options['critical']
+          conn.expire(key, DIGEST_KEY_TTL)
+        end
+      end
+    end
+
+    def self.queue_jobs(group, args_array)
+      key = self.digestible_key(group)
+
+      Sidekiq.redis do |conn|
+        args_array.in_groups_of(250, false).each do |batch|
+          json_args_array = batch.map {|args| Sidekiq.dump_json(args) }
+          if self.get_sidekiq_options['digest_type'] == :unique
+            # puts "Adding to set: #{key}"
+            conn.sadd(key, json_args_array)
+          else
+            # puts "Adding to list: #{key}"
+            conn.rpush(key, json_args_array)
+          end
         end
 
         # Set expiry on non-critical jobs to allow redis to evict these keys
