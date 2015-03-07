@@ -11,7 +11,7 @@ module Sidekiq
       if ::Rails.env.development?
         POLL_INTERVAL = 1
       else
-        POLL_INTERVAL = 6
+        POLL_INTERVAL = 8
       end
 
       def poll(first_time=false)
@@ -70,10 +70,9 @@ module Sidekiq
         end
       end
 
-      private
-
-      def schedule_pending_job(klass, key, conn)
-        process_key = "#{key.gsub(/:pending/, '')}:#{@now_string}"
+      # Schedule a digestible job. Returns key for pending args.
+      def self.schedule_pending_job(klass, key, conn, timestamp)
+        process_key = "#{key.gsub(/:pending/, '')}:#{timestamp}"
 
         if conn.exists(key)
           conn.rename(key, process_key)
@@ -83,8 +82,88 @@ module Sidekiq
 
           # puts "rename #{key} to #{process_key}"
           klass.perform_async(process_key)
+
+          process_key
         end
       end
+
+      def self.schedule_batched_pending_job(klass, key, conn, timestamp)
+        process_key = "#{key.gsub(/:pending/, '')}:#{timestamp}"
+
+        if conn.exists(key)
+          batch       = klass.get_sidekiq_options['batch']
+          if batch.is_a?(Proc)
+            batch = batch.call
+          end
+
+          period      = klass.get_sidekiq_options['period']
+          digest_type = klass.get_sidekiq_options['digest_type']
+          rate_key    = klass.digestible_rate_limit_key
+
+          pending_key_type = if digest_type == :unique
+                               "set"
+                             else
+                               "list"
+                             end
+
+          batch_size = klass.batch_size_to_pull(
+            conn,
+            rate_key,
+            key,
+            pending_key_type,
+            batch,
+            period
+          )
+
+          if batch_size < 1
+            STATSD.count("batched_digestible_worker.did_not_queue.zero_batch")
+            return process_key
+          end
+
+          # Move batch_size args from key (<class>:pending) to job key (<class>:<timestamp>)
+          # This is definitely not efficient.
+          if digest_type == :unique
+            time = Benchmark.realtime do
+              items = conn.srandmember(key, batch_size)
+              items.in_groups_of(250, false).each do |batch|
+                conn.sadd(process_key, batch)
+              end
+              conn.sdiffstore(key, key, process_key)
+            end
+            STATSD.timer("batched_digestible_worker.queue_processing.set", time * 1000)
+
+          else
+            time = Benchmark.realtime do
+              items = conn.lrange(key, 0, batch_size-1)
+              items.in_groups_of(250, false).each do |batch|
+                conn.rpush(process_key, batch)
+              end
+              conn.ltrim(key, batch_size, -1)
+            end
+            STATSD.timer("batched_digestible_worker.queue_processing.list", time * 1000)
+          end
+
+          conn.expire(process_key, DigestibleWorker::DIGEST_KEY_TTL)
+
+          STATSD.count("batched_digestible_worker.queued.count", batch_size)
+
+          klass.perform_async(process_key)
+        else
+          STATSD.count("batched_digestible_worker.did_not_queue.missing_key")
+        end
+
+        process_key
+      end
+
+      def schedule_pending_job(klass, key, conn)
+        if klass.get_sidekiq_options['batch']
+          self.class.schedule_batched_pending_job(klass, key, conn, @now_string)
+        else
+          self.class.schedule_pending_job(klass, key, conn, @now_string)
+        end
+      end
+
+      private
 
       def poll_interval
         # Is dependent on number of workers we're running -- the goal is to

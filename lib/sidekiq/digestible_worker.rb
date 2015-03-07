@@ -46,10 +46,10 @@ module Sidekiq
 
       Sidekiq.redis do |conn|
         if self.get_sidekiq_options['digest_type'] == :unique
-  # puts "Adding to set: #{key}"
+          # puts "Adding to set: #{key}"
           conn.sadd(key, Sidekiq.dump_json(args))
         else
-  # puts "Adding to list: #{key}"
+          # puts "Adding to list: #{key}"
           conn.rpush(key, Sidekiq.dump_json(args))
         end
 
@@ -69,17 +69,74 @@ module Sidekiq
       end
     end
 
-    # Naive implementation. This assumes the args in redis don't bloat the
-    # sidekiq worker too much. If it does, we'll need to split the args into
-    # chunks. Also assumes any errors are handled by the #perform_all method.
+    def self.digestible_rate_limit_key
+      "#{self}:rate"
+    end
+
+    def self.batch_size_to_pull(redis, rate_key, pending_args_key, pending_key_type, batch, period)
+      res = redis.eval(%Q{
+        local current_rate
+        local items_to_pull
+        local rate_key_exists
+        local rate_key_ttl
+        local pending_args_size
+
+        rate_key_exists = redis.call('EXISTS', KEYS[1])
+        rate_key_ttl = redis.call('TTL', KEYS[1])
+
+        if rate_key_exists then
+          current_rate = redis.call('GET', KEYS[1])
+        else
+          current_rate = 0
+        end
+
+        if not current_rate then
+          current_rate = 0
+        end
+
+        if tonumber(current_rate) < tonumber(ARGV[2]) then
+          items_to_pull = tonumber(ARGV[2]) - tonumber(current_rate)
+        else
+          if rate_key_ttl < 0 then
+            redis.call("EXPIRE", KEYS[1], tonumber(ARGV[3]))
+          end
+          return 0
+        end
+
+        if ARGV[1] == "list" then
+          pending_args_size = redis.call('llen', KEYS[2])
+        else
+          pending_args_size = redis.call('scard', KEYS[2])
+        end
+
+        if tonumber(pending_args_size) <= tonumber(items_to_pull) then
+          items_to_pull = tonumber(pending_args_size)
+        end
+
+        redis.call('INCRBY', KEYS[1], items_to_pull)
+        if not rate_key_exists or rate_key_ttl < 0 then
+          redis.call("EXPIRE", KEYS[1], tonumber(ARGV[3]))
+        else
+          redis.call("EXPIRE", KEYS[1], tonumber(ARGV[3]) - rate_key_ttl)
+        end
+
+        return items_to_pull
+      }, [ rate_key, pending_args_key ], [ pending_key_type, batch, period ])
+    end
+
+    attr_accessor :pending_args_key
+
     def perform(pending_args_key)
+      self.pending_args_key = pending_args_key
 
       # Pull all args from key
       Sidekiq.redis do |conn|
         # Key could have been evicted or expired
         return unless conn.exists(pending_args_key)
 
-        if self.class.get_sidekiq_options['digest_type'] == :unique
+        digest_type = self.class.get_sidekiq_options['digest_type']
+
+        if digest_type == :unique
           @args = conn.smembers(pending_args_key)
         else
           @args = conn.lrange(pending_args_key, 0, -1)
@@ -95,7 +152,6 @@ module Sidekiq
           action = perform_all(@args)
         end
 
-        
         conn.del(pending_args_key)
       end
     end
