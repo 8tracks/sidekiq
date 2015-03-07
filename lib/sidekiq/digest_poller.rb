@@ -145,7 +145,7 @@ module Sidekiq
 
           conn.expire(process_key, DigestibleWorker::DIGEST_KEY_TTL)
 
-          STATSD.count("batched_digestible_worker.queued.count", batch_size)
+          STATSD.count("batched_digestible_worker.queued.batch_count", batch_size)
 
           klass.perform_async(process_key)
         else
