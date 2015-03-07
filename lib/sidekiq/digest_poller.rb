@@ -116,7 +116,7 @@ module Sidekiq
           )
 
           if batch_size < 1
-            STATSD.count("batched_digestible_worker.did_not_queue.zero_batch")
+            STATSD.count("batched_digestible_worker.#{klass}.did_not_queue.zero_batch")
             return process_key
           end
 
@@ -130,7 +130,7 @@ module Sidekiq
               end
               conn.sdiffstore(key, key, process_key)
             end
-            STATSD.timer("batched_digestible_worker.queue_processing.set", time * 1000)
+            STATSD.timer("batched_digestible_worker.#{klass}.queue_processing.set", time * 1000)
 
           else
             time = Benchmark.realtime do
@@ -140,16 +140,16 @@ module Sidekiq
               end
               conn.ltrim(key, batch_size, -1)
             end
-            STATSD.timer("batched_digestible_worker.queue_processing.list", time * 1000)
+            STATSD.timer("batched_digestible_worker.#{klass}.queue_processing.list", time * 1000)
           end
 
           conn.expire(process_key, DigestibleWorker::DIGEST_KEY_TTL)
 
-          STATSD.count("batched_digestible_worker.queued.batch_count", batch_size)
+          STATSD.count("batched_digestible_worker.#{klass}.queued.batch_count", batch_size)
 
           klass.perform_async(process_key)
         else
-          STATSD.count("batched_digestible_worker.did_not_queue.missing_key")
+          STATSD.count("batched_digestible_worker.#{klass}.did_not_queue.missing_key")
         end
 
         process_key
