@@ -49,7 +49,7 @@ module Sidekiq
         rescue Exception => ex
           STATSD.counter("job.#{worker.class.to_s.underscore}.rescue_before")
           handle_exception(ex, msg || { :message => msgstr })
-          STATSD.counter("job.#{worker.class.to_s.underscore}.rescue_before")
+          STATSD.counter("job.#{worker.class.to_s.underscore}.rescue_after")
           raise
         ensure
           STATSD.counter("job.#{worker.class.to_s.underscore}.ensure")
