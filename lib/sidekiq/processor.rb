@@ -43,12 +43,16 @@ module Sidekiq
           stats(worker, msg, queue) do
             Sidekiq.server_middleware.invoke(worker, msg, queue) do
               worker.perform(*cloned(msg['args']))
+              STATSD.counter("job.#{worker.class.to_s.underscore}.perform")
             end
           end
         rescue Exception => ex
+          STATSD.counter("job.#{worker.class.to_s.underscore}.rescue_before")
           handle_exception(ex, msg || { :message => msgstr })
+          STATSD.counter("job.#{worker.class.to_s.underscore}.rescue_before")
           raise
         ensure
+          STATSD.counter("job.#{worker.class.to_s.underscore}.ensure")
           work.acknowledge
         end
       end
